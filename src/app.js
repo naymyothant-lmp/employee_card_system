@@ -38,9 +38,10 @@ app.get('/api/health', (req, res) =>
 );
 
 // 404
-app.use((req, res) =>
-  res.status(404).json({ success: false, message: 'Route not found' })
-);
+//TODO::Re-enable
+// app.use((req, res) =>
+//   res.status(404).json({ success: false, message: 'Route not found' })
+// );
 
 // Global error handler
 app.use((err, req, res, next) => {
@@ -53,7 +54,7 @@ sequelize
   .authenticate()
   .then(() => {
     console.log('✅ Database connected');
-    return sequelize.sync({ alter: true });
+    return sequelize.sync({ alter: false });
   })
   .then(() => {
     app.listen(PORT, () =>

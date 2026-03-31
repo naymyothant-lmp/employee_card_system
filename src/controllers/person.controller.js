@@ -88,3 +88,52 @@ exports.createEmployee = async (req, res) => {
     return error(res, 'Server error', 500);
   }
 };
+
+exports.updatePerson = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const person = await PersonInfo.findByPk(id);
+    if (!person) return error(res, 'Person not found', 404);
+
+    const { name, phone, nrc_number, active_address } = req.body;
+    const updates = {};
+
+    if (name !== undefined) updates.name = name;
+    if (phone !== undefined) updates.phone = phone;
+    if (nrc_number !== undefined) updates.nrc_number = nrc_number;
+    if (active_address !== undefined) updates.active_address = active_address;
+
+    ['profile_photo', 'nrc_front_photo', 'nrc_back_photo'].forEach((field) => {
+      const path = photoPath(req.files, field);
+      if (path) updates[field] = path;
+    });
+
+    if (!Object.keys(updates).length) {
+      return error(res, 'Nothing to update', 400);
+    }
+
+    await person.update(updates);
+    return success(res, person, 'Person updated');
+  } catch (err) {
+    console.error(err);
+    return error(res, 'Server error', 500);
+  }
+};
+
+exports.removePerson = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const person = await PersonInfo.findByPk(id);
+    if (!person) return error(res, 'Person not found', 404);
+
+    if (person.is_active) {
+      await person.update({ is_active: false });
+      return success(res, { is_active: person.is_active }, 'Person deactivated');
+    }
+
+    return success(res, { is_active: person.is_active }, 'Person already inactive');
+  } catch (err) {
+    console.error(err);
+    return error(res, 'Server error', 500);
+  }
+};

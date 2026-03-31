@@ -4,6 +4,7 @@ const { authenticate, authorize } = require('../middlewares/auth.middleware');
 
 // Get all employees with full business info
 router.get('/', authenticate, ctrl.getAllWithBusinessInfo);
+router.get('/owners', authenticate, ctrl.getAllOwners);
 
 // Get employees by business info id
 router.get('/by-business/:business_info_id', authenticate, ctrl.getByBusinessInfo);

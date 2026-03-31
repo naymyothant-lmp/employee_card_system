@@ -21,4 +21,21 @@ router.post(
   ctrl.createEmployee,
 );
 
+// Update Person — Admin and above
+router.patch(
+  '/:id',
+  authenticate,
+  authorize('SuperAdmin', 'Admin'),
+  personUpload,
+  ctrl.updatePerson,
+);
+
+// Delete (deactivate) Person — Admin and above
+router.delete(
+  '/:id',
+  authenticate,
+  authorize('SuperAdmin', 'Admin'),
+  ctrl.removePerson,
+);
+
 module.exports = router;

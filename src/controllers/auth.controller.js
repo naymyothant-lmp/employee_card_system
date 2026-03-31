@@ -30,3 +30,15 @@ exports.login = async (req, res) => {
     return error(res, 'Server error', 500);
   }
 };
+
+exports.getMe = async (req, res) => {
+    try {
+        console.log("reach getMe")
+      const user = await User.findByPk(req.user.id);
+      if(!user) return error(res, 'Not found', 204);
+        return success(res,user);
+    }catch(e){
+console.log(e)
+      return error(res,`Server Error ${e}`,500)
+    }
+}

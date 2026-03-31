@@ -28,11 +28,33 @@ const fullInclude = [
   },
 ];
 
+const ownerInclude = [
+  {
+    model: PersonInfo,
+    as: 'person',
+  },
+  {
+    model: BusinessInfo,
+    as: 'business',
+    include: [{ model: BusinessType, as: 'businessType' }],
+  },
+];
+
 // ── Get all employees (with full business info chain) ─────────
 exports.getAllWithBusinessInfo = async (req, res) => {
   try {
     const employees = await EmployeeInfo.findAll({ include: fullInclude });
     return success(res, employees);
+  } catch (err) {
+    console.error(err);
+    return error(res, 'Server error', 500);
+  }
+};
+
+exports.getAllOwners = async (req, res) => {
+  try {
+    const owners = await BusinessOwner.findAll({ include: ownerInclude });
+    return success(res, owners);
   } catch (err) {
     console.error(err);
     return error(res, 'Server error', 500);

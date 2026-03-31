@@ -16,6 +16,7 @@ async function authenticate(req, res, next) {
     const user    = await User.findByPk(decoded.id, { attributes: { exclude: ['password'] } });
     if (!user || !user.is_active) return error(res, 'Unauthorized', 401);
     req.user = user;
+    console.log("user", user)
     next();
   } catch {
     return error(res, 'Invalid or expired token', 401);
