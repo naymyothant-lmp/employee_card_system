@@ -40,6 +40,9 @@ const ownerInclude = [
   },
 ];
 
+function photoPath(files, field) {
+  return files && files[field] ? files[field][0].path : null;
+}
 // ── Get all employees (with full business info chain) ─────────
 exports.getAllWithBusinessInfo = async (req, res) => {
   try {
@@ -119,6 +122,84 @@ exports.getById = async (req, res) => {
     if (!employee) return error(res, 'Employee not found', 404);
     return success(res, employee);
   } catch (err) {
+    return error(res, 'Server error', 500);
+  }
+};
+
+exports.updateEmployee = async (req, res) => {
+  try {
+    const employee = await EmployeeInfo.findByPk(req.params.id, {
+      include: [{ model: PersonInfo, as: 'person' }],
+    });
+    if (!employee) return error(res, 'Employee not found', 404);
+
+    const person = employee.person;
+    if (!person) return error(res, 'Employee profile not found', 404);
+
+    const {
+      name, phone, nrc_number, active_address, business_owner_id,
+    } = req.body;
+
+    const personUpdates = {};
+    if (name !== undefined) personUpdates.name = name;
+    if (phone !== undefined) personUpdates.phone = phone;
+    if (nrc_number !== undefined) personUpdates.nrc_number = nrc_number;
+    if (active_address !== undefined) personUpdates.active_address = active_address;
+
+    ['profile_photo', 'nrc_front_photo', 'nrc_back_photo'].forEach((field) => {
+      const path = photoPath(req.files, field);
+      if (path) personUpdates[field] = path;
+    });
+
+    const employeeUpdates = {};
+    if (business_owner_id !== undefined && Number(business_owner_id) !== employee.business_owner_id) {
+      if (!business_owner_id) return error(res, 'business_owner_id is required to change owner', 400);
+      const owner = await BusinessOwner.findByPk(business_owner_id);
+      if (!owner) return error(res, 'BusinessOwner not found', 404);
+      employeeUpdates.business_owner_id = Number(business_owner_id);
+    }
+
+    if (!Object.keys(personUpdates).length && !Object.keys(employeeUpdates).length) {
+      return error(res, 'Nothing to update', 400);
+    }
+
+    if (Object.keys(personUpdates).length) {
+      await person.update(personUpdates);
+    }
+
+    if (Object.keys(employeeUpdates).length) {
+      await employee.update(employeeUpdates);
+    }
+
+    const updated = await EmployeeInfo.findByPk(req.params.id, {
+      include: fullInclude,
+    });
+
+    return success(res, updated, 'Employee updated');
+  } catch (err) {
+    console.error(err);
+    return error(res, 'Server error', 500);
+  }
+};
+
+exports.removeEmployee = async (req, res) => {
+  try {
+    const employee = await EmployeeInfo.findByPk(req.params.id, {
+      include: [{ model: PersonInfo, as: 'person' }],
+    });
+    if (!employee) return error(res, 'Employee not found', 404);
+
+    const { person } = employee;
+    if (!person) return error(res, 'Employee profile not found', 404);
+
+    if (person.is_active) {
+      await person.update({ is_active: false });
+      return success(res, { is_active: person.is_active }, 'Employee deactivated');
+    }
+
+    return success(res, { is_active: person.is_active }, 'Employee already inactive');
+  } catch (err) {
+    console.error(err);
     return error(res, 'Server error', 500);
   }
 };

@@ -12,6 +12,27 @@ router.post(
   ctrl.createOwner,
 );
 
+// Owner detail/update/delete — Admin and above
+router.get(
+  '/owner/:id',
+  authenticate,
+  authorize('SuperAdmin', 'Admin'),
+  ctrl.getOwnerById,
+);
+router.patch(
+  '/owner/:id',
+  authenticate,
+  authorize('SuperAdmin', 'Admin'),
+  personUpload,
+  ctrl.updateOwner,
+);
+router.delete(
+  '/owner/:id',
+  authenticate,
+  authorize('SuperAdmin', 'Admin'),
+  ctrl.removeOwner,
+);
+
 // Create Employee — all roles (Operator included)
 router.post(
   '/employee',

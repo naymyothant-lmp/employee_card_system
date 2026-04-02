@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const ctrl   = require('../controllers/employee.controller');
 const { authenticate, authorize } = require('../middlewares/auth.middleware');
+const { personUpload } = require('../middlewares/upload.middleware');
 
 // Get all employees with full business info
 router.get('/', authenticate, ctrl.getAllWithBusinessInfo);
@@ -14,6 +15,23 @@ router.get('/by-owner/:owner_id', authenticate, ctrl.getByOwner);
 
 // Get single employee
 router.get('/:id', authenticate, ctrl.getById);
+
+// Update employee — Admin and above (Operators included)
+router.patch(
+  '/:id',
+  authenticate,
+  authorize('SuperAdmin', 'Admin', 'Operator'),
+  personUpload,
+  ctrl.updateEmployee,
+);
+
+// Delete employee — Admin and above (Operators included)
+router.delete(
+  '/:id',
+  authenticate,
+  authorize('SuperAdmin', 'Admin', 'Operator'),
+  ctrl.removeEmployee,
+);
 
 // Toggle active status — Admin and above
 router.patch('/:id/toggle-active', authenticate, authorize('SuperAdmin', 'Admin'), ctrl.toggleActive);

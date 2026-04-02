@@ -32,13 +32,12 @@ exports.login = async (req, res) => {
 };
 
 exports.getMe = async (req, res) => {
-    try {
-        console.log("reach getMe")
-      const user = await User.findByPk(req.user.id);
-      if(!user) return error(res, 'Not found', 204);
-        return success(res,user);
-    }catch(e){
-console.log(e)
-      return error(res,`Server Error ${e}`,500)
-    }
-}
+  try {
+    const user = await User.findByPk(req.user.id, { attributes: { exclude: ['password'] } });
+    if (!user) return error(res, 'User not found', 404);
+    return success(res, user);
+  } catch (err) {
+    console.error(err);
+    return error(res, 'Server error', 500);
+  }
+};
