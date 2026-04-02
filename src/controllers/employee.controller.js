@@ -30,8 +30,10 @@ const fullInclude = [
 
 const ownerInclude = [
   {
+    // Include person info for the owner only for (is_active = true) filter in getAllOwners
     model: PersonInfo,
     as: 'person',
+      where: { is_active: true },
   },
   {
     model: BusinessInfo,
@@ -39,6 +41,14 @@ const ownerInclude = [
     include: [{ model: BusinessType, as: 'businessType' }],
   },
 ];
+
+const employeeInclude = [
+  {
+    // Include person info for the owner only for (is_active = true) filter in getAllOwners
+    model: PersonInfo,
+    as: 'person',
+      where: { is_active: true },
+  }, ]
 
 function photoPath(files, field) {
   return files && files[field] ? files[field][0].path : null;
@@ -56,7 +66,25 @@ exports.getAllWithBusinessInfo = async (req, res) => {
 
 exports.getAllOwners = async (req, res) => {
   try {
-    const owners = await BusinessOwner.findAll({ include: ownerInclude });
+    //Get All Owners Only person.is_active = true
+    const owners = await BusinessOwner.findAll({
+      include: ownerInclude,
+    });
+    return success(res, owners);
+  } catch (err) {
+    console.error(err);
+    return error(res, 'Server error', 500);
+  }
+};
+
+//Get All Employees Only person.is_active = true
+
+exports.getAllEmployees = async (req, res) => {
+  try {
+    //Get All Owners Only person.is_active = true
+    const owners = await EmployeeInfo.findAll({
+      include: employeeInclude,
+    });
     return success(res, owners);
   } catch (err) {
     console.error(err);

@@ -71,6 +71,20 @@ exports.getOwnerById = async (req, res) => {
   }
 };
 
+//TODO :GET Employee by ID (Admin and above) - can be used for employee profile view and update
+exports.getEmployeeById = async (req, res) => {
+  try {
+    const employee = await EmployeeInfo.findByPk(req.params.id, {
+      include: [{ model: PersonInfo, as: 'person' }],
+    });
+    if (!employee) return error(res, 'Employee not found', 404);
+    return success(res, employee);
+  } catch (err) {
+    console.error(err);
+    return error(res, 'Server error', 500);
+  }
+};
+
 exports.updateOwner = async (req, res) => {
   try {
     const { id } = req.params;

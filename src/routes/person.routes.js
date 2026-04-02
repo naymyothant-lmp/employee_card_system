@@ -42,6 +42,14 @@ router.post(
   ctrl.createEmployee,
 );
 
+// Employee detail/update/delete — Admin and above
+router.get(
+  '/employee/:id',
+  authenticate,
+  authorize('SuperAdmin', 'Admin'),
+  ctrl.getEmployeeById,
+);
+
 // Update Person — Admin and above
 router.patch(
   '/:id',

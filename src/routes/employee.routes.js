@@ -6,6 +6,7 @@ const { personUpload } = require('../middlewares/upload.middleware');
 // Get all employees with full business info
 router.get('/', authenticate, ctrl.getAllWithBusinessInfo);
 router.get('/owners', authenticate, ctrl.getAllOwners);
+router.get('/employees', authenticate, ctrl.getAllEmployees);
 
 // Get employees by business info id
 router.get('/by-business/:business_info_id', authenticate, ctrl.getByBusinessInfo);
