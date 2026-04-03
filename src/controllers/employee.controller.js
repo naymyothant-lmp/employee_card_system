@@ -147,9 +147,11 @@ exports.getById = async (req, res) => {
     const employee = await EmployeeInfo.findByPk(req.params.id, {
       include: fullInclude,
     });
+    
     if (!employee) return error(res, 'Employee not found', 404);
     return success(res, employee);
   } catch (err) {
+    console.error(err);
     return error(res, 'Server error', 500);
   }
 };

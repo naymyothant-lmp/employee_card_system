@@ -75,7 +75,14 @@ exports.getOwnerById = async (req, res) => {
 exports.getEmployeeById = async (req, res) => {
   try {
     const employee = await EmployeeInfo.findByPk(req.params.id, {
-      include: [{ model: PersonInfo, as: 'person' }],
+      include: [
+        { model: PersonInfo, as: 'person' },
+        {
+          model: BusinessOwner,
+          as: 'owner',
+          include: ownerInclude,
+        },
+      ],
     });
     if (!employee) return error(res, 'Employee not found', 404);
     return success(res, employee);

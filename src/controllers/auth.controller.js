@@ -18,7 +18,8 @@ exports.login = async (req, res) => {
     const token = jwt.sign(
       { id: user.id, user_type: user.user_type },
       JWT_SECRET,
-      { expiresIn: '8h' }
+      //TOCHANGEINPROD
+      { expiresIn: '30d' }
     );
 
     return success(res, {
