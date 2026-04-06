@@ -69,6 +69,11 @@ Default SuperAdmin credentials after seeding:
 | GET    | /api/businesses   | —                                          |
 | GET    | /api/businesses/:id | —                                        |
 
+`GET /api/businesses` supports optional query parameters:
+- `page`, `limit` for pagination (default `page=1`, `limit=20`, max `100`)
+- `business_type_id`, `name`, and `location` for simple filters
+- `search` for partial matches against both `name` and `location`
+
 ### Persons — Create Owner
 `POST /api/persons/owner`  
 Form-data (multipart):
@@ -108,6 +113,8 @@ Form-data (multipart):
 | GET    | /api/employees/by-owner/:owner_id            | Employees by owner                 |
 | PATCH  | /api/employees/:id/toggle-active             | Activate / deactivate              |
 | POST   | /api/employees/verify                        | Verify by encrypted card code      |
+
+`GET /api/employees` accepts optional `page`/`limit` pagination parameters plus `searchquery` (matches employee name or phone) in addition to any business filters described above.
 
 ### Verify Endpoint
 `POST /api/employees/verify`

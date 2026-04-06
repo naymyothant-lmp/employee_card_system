@@ -5,6 +5,7 @@ const {
   BusinessInfo,
   BusinessType,
 } = require('../models');
+const { Op } = require('sequelize');
 const { decryptCode } = require('../utils/encrypt');
 const { success, error } = require('../utils/response');
 
@@ -25,6 +26,26 @@ const ownerInclude = [
 function parsePositiveInt(value) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function getSearchTerm(query = {}) {
+  const raw = query.searchquery ?? query.search;
+  return typeof raw === 'string' ? raw.trim() : '';
+}
+
+function buildPersonSearchWhere({ searchTerm = '', onlyActive = false } = {}) {
+  const where = {};
+  if (onlyActive) {
+    where.is_active = true;
+  }
+  if (searchTerm) {
+    const likeValue = `%${searchTerm}%`;
+    where[Op.or] = [
+      { name: { [Op.like]: likeValue } },
+      { phone: { [Op.like]: likeValue } },
+    ];
+  }
+  return Object.keys(where).length ? where : null;
 }
 
 function extractEmployeeFilters(query = {}) {
@@ -128,8 +149,10 @@ exports.getAllWithBusinessInfo = async (req, res) => {
   try {
     const { limit, offset, page } = getPaginationOptions(req.query);
     const filters = extractEmployeeFilters(req.query);
+    const searchTerm = getSearchTerm(req.query);
+    const personWhere = buildPersonSearchWhere({ searchTerm });
     const result = await EmployeeInfo.findAndCountAll({
-      include: buildFullInclude(filters),
+      include: buildFullInclude(filters, personWhere ? { where: personWhere } : undefined),
       limit,
       offset,
       distinct: true,
@@ -162,8 +185,10 @@ exports.getAllEmployees = async (req, res) => {
     //Get All Owners Only person.is_active = true
     const { limit, offset, page } = getPaginationOptions(req.query);
     const filters = extractEmployeeFilters(req.query);
+    const searchTerm = getSearchTerm(req.query);
+    const personWhere = buildPersonSearchWhere({ searchTerm, onlyActive: true });
     const result = await EmployeeInfo.findAndCountAll({
-      include: buildFullInclude(filters, { where: { is_active: true } }),
+      include: buildFullInclude(filters, personWhere ? { where: personWhere } : undefined),
       limit,
       offset,
       distinct: true,
