@@ -10,6 +10,11 @@ const { success, error } = require('../utils/response');
 
 // ── Helpers ───────────────────────────────────────────────────
 function photoPath(files, field) {
+  if(files && files[field]) {
+    console.log(files[field][0].path);
+    //Get Relative path from absolute path (remove 'uploads/' prefix) 
+  }
+
   return files && files[field] ? files[field][0].path : null;
 }
 

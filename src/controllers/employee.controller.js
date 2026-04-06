@@ -8,26 +8,6 @@ const {
 const { decryptCode } = require('../utils/encrypt');
 const { success, error } = require('../utils/response');
 
-// ── Full include chain ────────────────────────────────────────
-const fullInclude = [
-  {
-    model: PersonInfo,
-    as: 'person',
-  },
-  {
-    model: BusinessOwner,
-    as: 'owner',
-    include: [
-      { model: PersonInfo, as: 'person' },
-      {
-        model: BusinessInfo,
-        as: 'business',
-        include: [{ model: BusinessType, as: 'businessType' }],
-      },
-    ],
-  },
-];
-
 const ownerInclude = [
   {
     // Include person info for the owner only for (is_active = true) filter in getAllOwners
@@ -42,13 +22,103 @@ const ownerInclude = [
   },
 ];
 
-const employeeInclude = [
-  {
-    // Include person info for the owner only for (is_active = true) filter in getAllOwners
-    model: PersonInfo,
-    as: 'person',
-      where: { is_active: true },
-  }, ]
+function parsePositiveInt(value) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function extractEmployeeFilters(query = {}) {
+  return {
+    businessOwnerId: parsePositiveInt(query.business_owner_id),
+    businessInfoId: parsePositiveInt(query.business_info_id),
+    businessTypeId: parsePositiveInt(query.business_type_id),
+  };
+}
+
+function buildBusinessTypeInclude(filters) {
+  const include = { model: BusinessType, as: 'businessType' };
+  if (filters.businessTypeId) {
+    include.where = { id: filters.businessTypeId };
+    include.required = true;
+  }
+  return include;
+}
+
+function buildBusinessInclude(filters) {
+  const include = {
+    model: BusinessInfo,
+    as: 'business',
+    include: [buildBusinessTypeInclude(filters)],
+  };
+  const needsBusinessFilter = filters.businessInfoId || filters.businessTypeId;
+  if (filters.businessInfoId) {
+    include.where = { id: filters.businessInfoId };
+  }
+  if (needsBusinessFilter) {
+    include.required = true;
+  }
+  return include;
+}
+
+function buildOwnerInclude(filters) {
+  const ownerInclude = {
+    model: BusinessOwner,
+    as: 'owner',
+    include: [
+      { model: PersonInfo, as: 'person' },
+      buildBusinessInclude(filters),
+    ],
+  };
+  if (filters.businessOwnerId) {
+    ownerInclude.where = { id: filters.businessOwnerId };
+  }
+  if (filters.businessOwnerId || filters.businessInfoId || filters.businessTypeId) {
+    ownerInclude.required = true;
+  }
+  return ownerInclude;
+}
+
+function buildFullInclude(filters = {}, personOptions = {}) {
+  const personInclude = { model: PersonInfo, as: 'person' };
+  if (personOptions.where) {
+    personInclude.where = personOptions.where;
+  }
+  return [personInclude, buildOwnerInclude(filters)];
+}
+
+const DEFAULT_PAGINATION_LIMIT = 20;
+const MAX_PAGINATION_LIMIT = 100;
+
+function getPaginationOptions(query = {}) {
+  let limit = Number.parseInt(query.limit, 10);
+  if (!Number.isFinite(limit) || limit <= 0) {
+    limit = DEFAULT_PAGINATION_LIMIT;
+  }
+  limit = Math.min(limit, MAX_PAGINATION_LIMIT);
+
+  let page = Number.parseInt(query.page, 10);
+  if (!Number.isFinite(page) || page <= 0) {
+    page = 1;
+  }
+
+  const offset = (page - 1) * limit;
+  return { limit, offset, page };
+}
+
+function paginatedSuccess(res, result, { page, limit }) {
+  const total = result.count || 0;
+  const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
+
+  return success(res, {
+    data: result.rows,
+    meta: {
+      total,
+      limit,
+      page,
+      totalPages,
+    },
+  });
+}
 
 function photoPath(files, field) {
   return files && files[field] ? files[field][0].path : null;
@@ -56,8 +126,16 @@ function photoPath(files, field) {
 // ── Get all employees (with full business info chain) ─────────
 exports.getAllWithBusinessInfo = async (req, res) => {
   try {
-    const employees = await EmployeeInfo.findAll({ include: fullInclude });
-    return success(res, employees);
+    const { limit, offset, page } = getPaginationOptions(req.query);
+    const filters = extractEmployeeFilters(req.query);
+    const result = await EmployeeInfo.findAndCountAll({
+      include: buildFullInclude(filters),
+      limit,
+      offset,
+      distinct: true,
+    });
+
+    return paginatedSuccess(res, result, { page, limit });
   } catch (err) {
     console.error(err);
     return error(res, 'Server error', 500);
@@ -77,15 +155,21 @@ exports.getAllOwners = async (req, res) => {
   }
 };
 
-//Get All Employees Only person.is_active = true
+// Get all active employees with optional business filters
 
 exports.getAllEmployees = async (req, res) => {
   try {
     //Get All Owners Only person.is_active = true
-    const owners = await EmployeeInfo.findAll({
-      include: employeeInclude,
+    const { limit, offset, page } = getPaginationOptions(req.query);
+    const filters = extractEmployeeFilters(req.query);
+    const result = await EmployeeInfo.findAndCountAll({
+      include: buildFullInclude(filters, { where: { is_active: true } }),
+      limit,
+      offset,
+      distinct: true,
     });
-    return success(res, owners);
+
+    return paginatedSuccess(res, result, { page, limit });
   } catch (err) {
     console.error(err);
     return error(res, 'Server error', 500);
@@ -96,28 +180,22 @@ exports.getAllEmployees = async (req, res) => {
 exports.getByBusinessInfo = async (req, res) => {
   try {
     const { business_info_id } = req.params;
+    const businessInfoId = parsePositiveInt(business_info_id);
+    if (!businessInfoId) return error(res, 'business_info_id is required', 400);
 
-    const employees = await EmployeeInfo.findAll({
-      include: [
-        { model: PersonInfo, as: 'person' },
-        {
-          model: BusinessOwner,
-          as: 'owner',
-          required: true,
-          where: { business_info_id },
-          include: [
-            { model: PersonInfo, as: 'person' },
-            {
-              model: BusinessInfo,
-              as: 'business',
-              include: [{ model: BusinessType, as: 'businessType' }],
-            },
-          ],
-        },
-      ],
+    const { limit, offset, page } = getPaginationOptions(req.query);
+    const filters = {
+      ...extractEmployeeFilters(req.query),
+      businessInfoId,
+    };
+    const result = await EmployeeInfo.findAndCountAll({
+      include: buildFullInclude(filters),
+      limit,
+      offset,
+      distinct: true,
     });
 
-    return success(res, employees);
+    return paginatedSuccess(res, result, { page, limit });
   } catch (err) {
     console.error(err);
     return error(res, 'Server error', 500);
@@ -129,12 +207,23 @@ exports.getByOwner = async (req, res) => {
   try {
     const { owner_id } = req.params;
 
-    const employees = await EmployeeInfo.findAll({
-      where: { business_owner_id: owner_id },
-      include: fullInclude,
+    const ownerId = parsePositiveInt(owner_id);
+    if (!ownerId) return error(res, 'owner_id is required', 400);
+
+    const { limit, offset, page } = getPaginationOptions(req.query);
+    const filters = {
+      ...extractEmployeeFilters(req.query),
+      businessOwnerId: ownerId,
+    };
+    const result = await EmployeeInfo.findAndCountAll({
+      where: { business_owner_id: ownerId },
+      include: buildFullInclude(filters),
+      limit,
+      offset,
+      distinct: true,
     });
 
-    return success(res, employees);
+    return paginatedSuccess(res, result, { page, limit });
   } catch (err) {
     console.error(err);
     return error(res, 'Server error', 500);
@@ -145,7 +234,7 @@ exports.getByOwner = async (req, res) => {
 exports.getById = async (req, res) => {
   try {
     const employee = await EmployeeInfo.findByPk(req.params.id, {
-      include: fullInclude,
+      include: buildFullInclude(),
     });
     
     if (!employee) return error(res, 'Employee not found', 404);
@@ -202,7 +291,7 @@ exports.updateEmployee = async (req, res) => {
     }
 
     const updated = await EmployeeInfo.findByPk(req.params.id, {
-      include: fullInclude,
+      include: buildFullInclude(),
     });
 
     return success(res, updated, 'Employee updated');
@@ -255,7 +344,7 @@ exports.verifyByCode = async (req, res) => {
 
     // Find employee
     const employee = await EmployeeInfo.findByPk(employeeId, {
-      include: fullInclude,
+      include: buildFullInclude(),
     });
 
     if (!employee) {
