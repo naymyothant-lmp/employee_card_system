@@ -45,7 +45,8 @@ function buildPersonSearchWhere({ searchTerm = '', onlyActive = false } = {}) {
       { phone: { [Op.like]: likeValue } },
     ];
   }
-  return Object.keys(where).length ? where : null;
+  console.log("employee where - ",where)
+  return where;
 }
 
 function extractEmployeeFilters(query = {}) {
@@ -150,7 +151,9 @@ exports.getAllWithBusinessInfo = async (req, res) => {
     const { limit, offset, page } = getPaginationOptions(req.query);
     const filters = extractEmployeeFilters(req.query);
     const searchTerm = getSearchTerm(req.query);
+    console.log('searchTerm:', searchTerm);
     const personWhere = buildPersonSearchWhere({ searchTerm });
+    console.log('personWhere:', personWhere);
     const result = await EmployeeInfo.findAndCountAll({
       include: buildFullInclude(filters, personWhere ? { where: personWhere } : undefined),
       limit,
