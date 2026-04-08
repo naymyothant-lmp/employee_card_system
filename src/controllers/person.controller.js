@@ -22,23 +22,78 @@ const ownerInclude = [
   { model: PersonInfo, as: 'person' },
   {
     model: BusinessInfo,
-    as: 'business',
+    as: 'businesses',
+    through: { attributes: [] },
     include: [{ model: BusinessType, as: 'businessType' }],
   },
 ];
+
+function parseBusinessInfoIds(payload = {}) {
+  const ids = new Set();
+
+  const addValue = (value) => {
+    if (value === undefined || value === null) return;
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      ids.add(parsed);
+    }
+  };
+
+  const collect = (value) => {
+    if (value === undefined || value === null) return;
+    if (Array.isArray(value)) {
+      value.forEach(collect);
+      return;
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return;
+      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          collect(parsed);
+          return;
+        } catch (err) {
+          console.warn('Invalid business_info_ids payload', err);
+        }
+      }
+      trimmed.split(',').forEach((item) => addValue(item));
+      return;
+    }
+    addValue(value);
+  };
+
+  collect(payload.business_info_ids);
+  if (payload.business_info_id !== undefined && payload.business_info_id !== null) {
+    addValue(payload.business_info_id);
+  }
+
+  return Array.from(ids);
+}
+
+function parsePositiveInt(value) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
 
 // ── Create Owner ──────────────────────────────────────────────
 exports.createOwner = async (req, res) => {
   try {
     const {
-      name, phone, nrc_number, active_address, business_info_id,
+      name, phone, nrc_number, active_address,
     } = req.body;
 
-    if (!name)             return error(res, 'name is required', 400);
-    if (!business_info_id) return error(res, 'business_info_id is required for owner', 400);
+    if (!name) return error(res, 'name is required', 400);
 
-    const business = await BusinessInfo.findByPk(business_info_id);
-    if (!business) return error(res, 'BusinessInfo not found', 404);
+    const businessInfoIds = parseBusinessInfoIds(req.body);
+    if (!businessInfoIds.length) {
+      return error(res, 'At least one business_info_id is required for owner', 400);
+    }
+
+    const businesses = await BusinessInfo.findAll({ where: { id: businessInfoIds } });
+    if (businesses.length !== businessInfoIds.length) {
+      return error(res, 'One or more BusinessInfo records not found', 404);
+    }
 
     const person = await PersonInfo.create({
       name,
@@ -52,11 +107,15 @@ exports.createOwner = async (req, res) => {
     });
 
     const owner = await BusinessOwner.create({
-      person_info_id:   person.id,
-      business_info_id: Number(business_info_id),
+      person_info_id: person.id,
     });
 
-    return success(res, { person, owner }, 'Owner created', 201);
+    await owner.setBusinesses(businessInfoIds);
+    const refreshedOwner = await BusinessOwner.findByPk(owner.id, {
+      include: ownerInclude,
+    });
+
+    return success(res, { person, owner: refreshedOwner }, 'Owner created', 201);
   } catch (err) {
     console.error(err);
     return error(res, 'Server error', 500);
@@ -83,6 +142,11 @@ exports.getEmployeeById = async (req, res) => {
       include: [
         { model: PersonInfo, as: 'person' },
         {
+          model: BusinessInfo,
+          as: 'businessInfo',
+          include: [{ model: BusinessType, as: 'businessType' }],
+        },
+        {
           model: BusinessOwner,
           as: 'owner',
           include: ownerInclude,
@@ -107,7 +171,7 @@ exports.updateOwner = async (req, res) => {
     if (!person) return error(res, 'Owner profile not found', 404);
 
     const {
-      name, phone, nrc_number, active_address, business_info_id,
+      name, phone, nrc_number, active_address,
     } = req.body;
 
     const personUpdates = {};
@@ -121,24 +185,23 @@ exports.updateOwner = async (req, res) => {
       if (path) personUpdates[field] = path;
     });
 
-    const ownerUpdates = {};
-    if (business_info_id !== undefined && Number(business_info_id) !== owner.business_info_id) {
-      if (!business_info_id) return error(res, 'business_info_id is required to change business', 400);
-      const business = await BusinessInfo.findByPk(business_info_id);
-      if (!business) return error(res, 'BusinessInfo not found', 404);
-      ownerUpdates.business_info_id = Number(business_info_id);
+    const businessInfoIds = parseBusinessInfoIds(req.body);
+    let relationUpdated = false;
+    if (businessInfoIds.length) {
+      const businesses = await BusinessInfo.findAll({ where: { id: businessInfoIds } });
+      if (businesses.length !== businessInfoIds.length) {
+        return error(res, 'One or more BusinessInfo records not found', 404);
+      }
+      await owner.setBusinesses(businessInfoIds);
+      relationUpdated = true;
     }
 
-    if (!Object.keys(personUpdates).length && !Object.keys(ownerUpdates).length) {
+    if (!Object.keys(personUpdates).length && !relationUpdated) {
       return error(res, 'Nothing to update', 400);
     }
 
     if (Object.keys(personUpdates).length) {
       await person.update(personUpdates);
-    }
-
-    if (Object.keys(ownerUpdates).length) {
-      await owner.update(ownerUpdates);
     }
 
     const refreshed = await BusinessOwner.findByPk(id, {
@@ -178,14 +241,28 @@ exports.removeOwner = async (req, res) => {
 exports.createEmployee = async (req, res) => {
   try {
     const {
-      name, phone, nrc_number, active_address, business_owner_id,
+      name, phone, nrc_number, active_address, business_owner_id, business_info_id,
     } = req.body;
 
     if (!name)              return error(res, 'name is required', 400);
     if (!business_owner_id) return error(res, 'business_owner_id is required for employee', 400);
+    if (!business_info_id)  return error(res, 'business_info_id is required for employee', 400);
 
-    const owner = await BusinessOwner.findByPk(business_owner_id);
+    const ownerId = parsePositiveInt(business_owner_id);
+    const businessInfoId = parsePositiveInt(business_info_id);
+    if (!ownerId) return error(res, 'business_owner_id must be a positive integer', 400);
+    if (!businessInfoId) return error(res, 'business_info_id must be a positive integer', 400);
+
+    const owner = await BusinessOwner.findByPk(ownerId);
     if (!owner) return error(res, 'BusinessOwner not found', 404);
+
+    const business = await BusinessInfo.findByPk(businessInfoId);
+    if (!business) return error(res, 'BusinessInfo not found', 404);
+
+    const ownsBusiness = await owner.hasBusiness(business);
+    if (!ownsBusiness) {
+      return error(res, 'BusinessOwner is not associated with this business_info_id', 400);
+    }
 
     const person = await PersonInfo.create({
       name,
@@ -200,7 +277,8 @@ exports.createEmployee = async (req, res) => {
 
     const employee = await EmployeeInfo.create({
       person_info_id:    person.id,
-      business_owner_id: Number(business_owner_id),
+      business_owner_id: ownerId,
+      business_info_id:  businessInfoId,
     });
 
     // Generate encrypted card code from employee id

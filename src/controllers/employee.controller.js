@@ -4,21 +4,25 @@ const {
   BusinessOwner,
   BusinessInfo,
   BusinessType,
+  CardIssue,
 } = require('../models');
 const { Op } = require('sequelize');
 const { decryptCode } = require('../utils/encrypt');
 const { success, error } = require('../utils/response');
+const { ISSUE_STATUS } = require('../models/CardIssue');
+const e = require('express');
 
 const ownerInclude = [
   {
     // Include person info for the owner only for (is_active = true) filter in getAllOwners
     model: PersonInfo,
     as: 'person',
-      where: { is_active: true },
+    where: { is_active: true },
   },
   {
     model: BusinessInfo,
-    as: 'business',
+    as: 'businesses',
+    through: { attributes: [] },
     include: [{ model: BusinessType, as: 'businessType' }],
   },
 ];
@@ -45,7 +49,7 @@ function buildPersonSearchWhere({ searchTerm = '', onlyActive = false } = {}) {
       { phone: { [Op.like]: likeValue } },
     ];
   }
-  console.log("employee where - ",where)
+  console.log("employee where - ", where)
   return where;
 }
 
@@ -69,7 +73,24 @@ function buildBusinessTypeInclude(filters) {
 function buildBusinessInclude(filters) {
   const include = {
     model: BusinessInfo,
-    as: 'business',
+    as: 'businesses',
+    through: { attributes: [] },
+    include: [buildBusinessTypeInclude(filters)],
+  };
+  const needsBusinessFilter = filters.businessInfoId || filters.businessTypeId;
+  if (filters.businessInfoId) {
+    include.where = { id: filters.businessInfoId };
+  }
+  if (needsBusinessFilter) {
+    include.required = true;
+  }
+  return include;
+}
+
+function buildEmployeeBusinessInclude(filters = {}) {
+  const include = {
+    model: BusinessInfo,
+    as: 'businessInfo',
     include: [buildBusinessTypeInclude(filters)],
   };
   const needsBusinessFilter = filters.businessInfoId || filters.businessTypeId;
@@ -105,7 +126,7 @@ function buildFullInclude(filters = {}, personOptions = {}) {
   if (personOptions.where) {
     personInclude.where = personOptions.where;
   }
-  return [personInclude, buildOwnerInclude(filters)];
+  return [personInclude, buildEmployeeBusinessInclude(filters), buildOwnerInclude(filters)];
 }
 
 const DEFAULT_PAGINATION_LIMIT = 20;
@@ -264,7 +285,7 @@ exports.getById = async (req, res) => {
     const employee = await EmployeeInfo.findByPk(req.params.id, {
       include: buildFullInclude(),
     });
-    
+
     if (!employee) return error(res, 'Employee not found', 404);
     return success(res, employee);
   } catch (err) {
@@ -284,7 +305,7 @@ exports.updateEmployee = async (req, res) => {
     if (!person) return error(res, 'Employee profile not found', 404);
 
     const {
-      name, phone, nrc_number, active_address, business_owner_id,
+      name, phone, nrc_number, active_address, business_owner_id, business_info_id,
     } = req.body;
 
     const personUpdates = {};
@@ -299,11 +320,39 @@ exports.updateEmployee = async (req, res) => {
     });
 
     const employeeUpdates = {};
-    if (business_owner_id !== undefined && Number(business_owner_id) !== employee.business_owner_id) {
-      if (!business_owner_id) return error(res, 'business_owner_id is required to change owner', 400);
-      const owner = await BusinessOwner.findByPk(business_owner_id);
-      if (!owner) return error(res, 'BusinessOwner not found', 404);
-      employeeUpdates.business_owner_id = Number(business_owner_id);
+    const ownerCandidate = business_owner_id !== undefined ? parsePositiveInt(business_owner_id) : undefined;
+    if (business_owner_id !== undefined && !ownerCandidate) {
+      return error(res, 'business_owner_id must be a positive integer', 400);
+    }
+    const businessCandidate = business_info_id !== undefined ? parsePositiveInt(business_info_id) : undefined;
+    if (business_info_id !== undefined && !businessCandidate) {
+      return error(res, 'business_info_id must be a positive integer', 400);
+    }
+
+    const ownerChanged = ownerCandidate !== undefined && ownerCandidate !== employee.business_owner_id;
+    const businessChanged = businessCandidate !== undefined && businessCandidate !== employee.business_info_id;
+
+    if (ownerChanged) {
+      employeeUpdates.business_owner_id = ownerCandidate;
+    }
+    if (businessChanged) {
+      employeeUpdates.business_info_id = businessCandidate;
+    }
+
+    if (ownerChanged || businessChanged) {
+      const ownerIdToCheck = ownerChanged ? ownerCandidate : employee.business_owner_id;
+      const businessIdToCheck = businessChanged ? businessCandidate : employee.business_info_id;
+
+      const ownerForCheck = await BusinessOwner.findByPk(ownerIdToCheck);
+      if (!ownerForCheck) return error(res, 'BusinessOwner not found', 404);
+
+      const businessForCheck = await BusinessInfo.findByPk(businessIdToCheck);
+      if (!businessForCheck) return error(res, 'BusinessInfo not found', 404);
+
+      const ownsBusiness = await ownerForCheck.hasBusiness(businessForCheck);
+      if (!ownsBusiness) {
+        return error(res, 'BusinessOwner is not associated with this business_info_id', 400);
+      }
     }
 
     if (!Object.keys(personUpdates).length && !Object.keys(employeeUpdates).length) {
@@ -351,6 +400,190 @@ exports.removeEmployee = async (req, res) => {
   }
 };
 
+// ── ADD TO ISSUE ──────────────────────────────────────────────
+exports.addIssueCard = async (req, res) => {
+  try {
+    const {
+      employee_ids,
+    } = req.body;
+
+    if (!employee_ids) return error(res, 'employee_ids is required', 400);
+
+    const employeeIds = parseEmployeeIds(req.body);
+    console.log('Parsed employeeIds:', employeeIds);
+    if (!employeeIds.length) {
+      return error(res, 'At least one employeeIds is required for owner', 400);
+    }
+
+    const employees = await EmployeeInfo.findAll({ where: { id: employeeIds } });
+    console.log('Found employees for IDs:', employees.map(e => e.id));
+    if (employees.length !== employeeIds.length) {
+      return error(res, 'One or more EmployeeInfo records not found', 404);
+    }
+
+    //Prevent duplicate TO_ISSUE cards for the same employee
+    const existingCards = await CardIssue.findAll({
+      where: {
+        employee_id: employeeIds,
+        status: 'TO_ISSUE',
+      },
+    });
+    const existingEmployeeIds = new Set(existingCards.map(card => card.employee_id));
+    const filteredEmployeeIds = employeeIds.filter(id => !existingEmployeeIds.has(id));
+
+    if (!filteredEmployeeIds.length) {
+      return error(res, 'All specified employees already have a TO_ISSUE card', 400);
+    }
+
+    let employeeCards = [];
+    for (let index = 0; index < filteredEmployeeIds.length; index++) {
+      const employee_id = filteredEmployeeIds[index];
+      const Card = await CardIssue.create({
+        employee_id: employee_id,
+        status: ISSUE_STATUS.includes('TO_ISSUE') ? 'TO_ISSUE' : ISSUE_STATUS[0],
+      });
+
+      employeeCards.push(employee_id)
+
+    }
+
+    return success(res, { employeeCards }, 'Cards added', 201);
+  } catch (err) {
+    console.error(err);
+    return error(res, 'Server error', 500);
+  }
+};
+
+//UPDATE STATUS TO ISSUED
+exports.updateIssueCard = async (req, res) => {
+  try {
+    const { card_issue_id } = req.params;
+
+    const cardIssue = await CardIssue.findByPk(card_issue_id);
+    if (!cardIssue) return error(res, 'CardIssue record not found', 404);
+
+    await cardIssue.update({ status: 'ISSUED' });
+
+    return success(res, cardIssue, 'Card status updated to ISSUED');
+  } catch (err) {
+    console.error(err);
+    return error(res, 'Server error', 500);
+  }
+};
+
+//GET ALL CARDS TO ISSUE
+exports.getCardsToIssue = async (req, res) => {
+  try {
+    const { limit, offset, page } = getPaginationOptions(req.query);
+
+    const filters = extractEmployeeFilters(req.query);
+    const searchTerm = getSearchTerm(req.query);
+    const personWhere = buildPersonSearchWhere({ searchTerm });
+    
+    const result = await CardIssue.findAndCountAll({
+      where: { status: 'TO_ISSUE' },
+      include: {
+        model: EmployeeInfo,
+        as: 'employee',
+        required: true,
+        include: buildFullInclude(filters, personWhere ? { where: personWhere } : undefined),
+      },
+      limit,
+      offset,
+    });
+
+    console.log('Cards to issue result:', result);
+    result.count= result.rows.length; // Override count to reflect actual number of records returned after filters
+    return paginatedSuccess(res, result, { page, limit });
+  } catch (err) {
+    console.error(err);
+    return error(res, 'Server error', 500);
+  }
+}
+
+//GET ALL Employees with  issued cards count with filters and name search , pagination
+exports.getEmployeesWithIssuedCards = async (req, res) => {
+  try {
+    const { limit, offset, page } = getPaginationOptions(req.query);
+    const filters = extractEmployeeFilters(req.query);
+    const searchTerm = getSearchTerm(req.query);
+    const personWhere = buildPersonSearchWhere({ searchTerm });
+
+    const result = await EmployeeInfo.findAndCountAll({
+      include: [
+        ...buildFullInclude(filters, personWhere ? { where: personWhere } : undefined),
+        {
+          model: CardIssue,
+          as: 'cardIssues',
+          where: { status: 'ISSUED' },
+          required: false,
+        },
+      ],
+      limit,
+      offset,
+      distinct: true,
+    });
+
+    // Map the result to include issued cards count
+    const mappedResult = {
+      count: result.count,
+      rows: result.rows.map(employee => ({
+        ...employee.toJSON(),
+        issuedCardsCount: employee.cardIssues ? employee.cardIssues.length : 0,
+      })),
+    };
+
+    return paginatedSuccess(res, mappedResult, { page, limit });
+  } catch (err) {
+    console.error(err);
+    return error(res, 'Server error', 500);
+  }
+}
+
+
+function parseEmployeeIds(payload = {}) {
+  const ids = new Set();
+
+  const addValue = (value) => {
+    if (value === undefined || value === null) return;
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      ids.add(parsed);
+    }
+  };
+
+  const collect = (value) => {
+    if (value === undefined || value === null) return;
+    if (Array.isArray(value)) {
+      value.forEach(collect);
+      return;
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return;
+      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          collect(parsed);
+          return;
+        } catch (err) {
+          console.warn('Invalid employee_ids payload', err);
+        }
+      }
+      trimmed.split(',').forEach((item) => addValue(item));
+      return;
+    }
+    addValue(value);
+  };
+
+  collect(payload.employee_ids);
+  if (payload.employee_id !== undefined && payload.employee_id !== null) {
+    addValue(payload.employee_id);
+  }
+
+  return Array.from(ids);
+}
+
 // ── Verify employee by encrypted card code ────────────────────
 // Checks: code valid → employee exists → isActive
 exports.verifyByCode = async (req, res) => {
@@ -387,7 +620,9 @@ exports.verifyByCode = async (req, res) => {
 
     // Verify the stored code matches what was submitted
     const codeMatches = employee.encrypted_code === code;
-    const isActive    = employee.person?.is_active === true;
+    const isActive = employee.person?.is_active === true;
+    const businessRecord = employee.businessInfo || employee.owner?.businesses?.[0];
+    const businessTypeRecord = businessRecord?.businessType;
 
     return res.status(200).json({
       success: true,
@@ -400,16 +635,18 @@ exports.verifyByCode = async (req, res) => {
           ? 'Employee is active and verified'
           : 'Employee exists but is inactive',
       employee: {
-        id:               employee.id,
-        name:             employee.person?.name,
-        phone:            employee.person?.phone,
-        nrc_number:       employee.person?.nrc_number,
-        profile_photo:    employee.person?.profile_photo,
-        active_address:   employee.person?.active_address,
-        is_active:        isActive,
-        owner:            employee.owner?.person?.name,
-        business:         employee.owner?.business?.name,
-        business_type:    employee.owner?.business?.businessType?.name,
+        id: employee.id,
+        name: employee.person?.name,
+        phone: employee.person?.phone,
+        nrc_number: employee.person?.nrc_number,
+        profile_photo: employee.person?.profile_photo,
+        active_address: employee.person?.active_address,
+        is_active: isActive,
+        owner: employee.owner?.person?.name,
+        business: businessRecord?.name,
+        business_type: businessTypeRecord?.name,
+        business_info_id: businessRecord?.id ?? employee.business_info_id,
+        business_info: businessRecord,
       },
     });
   } catch (err) {
