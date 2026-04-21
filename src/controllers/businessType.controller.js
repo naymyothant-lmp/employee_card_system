@@ -1,10 +1,69 @@
 const { BusinessType } = require('../models');
+const { Op } = require('sequelize');
 const { success, error } = require('../utils/response');
 
+const DEFAULT_PAGINATION_LIMIT = 20;
+const MAX_PAGINATION_LIMIT = 100;
+
+function getPaginationOptions(query = {}) {
+  let limit = Number.parseInt(query.limit, 10);
+  if (!Number.isFinite(limit) || limit <= 0) {
+    limit = DEFAULT_PAGINATION_LIMIT;
+  }
+  limit = Math.min(limit, MAX_PAGINATION_LIMIT);
+
+  let page = Number.parseInt(query.page, 10);
+  if (!Number.isFinite(page) || page <= 0) {
+    page = 1;
+  }
+
+  const offset = (page - 1) * limit;
+  return { limit, offset, page };
+}
+
+function paginatedSuccess(res, result, { page, limit }) {
+  const total = result.count || 0;
+  const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
+
+  return success(res, {
+    data: result.rows,
+    meta: {
+      total,
+      limit,
+      page,
+      totalPages,
+    },
+  });
+}
+
+function getSearchTerm(query = {}) {
+  const raw = query.searchquery ?? query.search;
+  return typeof raw === 'string' ? raw.trim() : '';
+}
+
+function buildBusinessTypeWhere(query = {}) {
+  const searchTerm = getSearchTerm(query);
+  const where = {};
+
+  if (searchTerm) {
+    where.name = { [Op.like]: `%${searchTerm}%` };
+  }
+
+  return where;
+}
+
+//BusinessType Lists
 exports.list = async (req, res) => {
   try {
-    const types = await BusinessType.findAll();
-    return success(res, types);
+    //Add Pagination and Search And Filter 
+    const { limit, offset, page } = getPaginationOptions(req.query);
+    const where = buildBusinessTypeWhere(req.query);
+    const result = await BusinessType.findAndCountAll({
+      where,
+      limit,
+      offset,
+    });
+    return paginatedSuccess(res, result, { page, limit });
   } catch (err) {
     return error(res, 'Server error', 500);
   }
