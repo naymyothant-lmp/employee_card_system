@@ -7,15 +7,17 @@ const {
 } = require('../models');
 const { generateEncryptedCode } = require('../utils/encrypt');
 const { success, error } = require('../utils/response');
+const path = require('path');
 
 // ── Helpers ───────────────────────────────────────────────────
 function photoPath(files, field) {
-  if(files && files[field]) {
-    console.log(files[field][0].path);
-    //Get Relative path from absolute path (remove 'uploads/' prefix) 
+  if (files && files[field]) {
+    const fullPath = files[field][0].path;
+    console.log(fullPath);  // Optional: Keep for debugging, or remove if not needed
+    // Get Relative Path
+    return path.relative(process.cwd(), fullPath);
   }
-
-  return files && files[field] ? files[field][0].path : null;
+  return null;
 }
 
 const ownerInclude = [

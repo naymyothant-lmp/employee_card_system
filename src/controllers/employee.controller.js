@@ -192,6 +192,8 @@ exports.getAllWithBusinessInfo = async (req, res) => {
 exports.getAllOwners = async (req, res) => {
   try {
     //Get All Owners Only person.is_active = true
+
+    //TODO:Pagination,Search,Filter ,Added for getAllOwners
     const owners = await BusinessOwner.findAll({
       include: ownerInclude,
     });
