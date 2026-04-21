@@ -129,6 +129,29 @@ function buildFullInclude(filters = {}, personOptions = {}) {
   return [personInclude, buildEmployeeBusinessInclude(filters), buildOwnerInclude(filters)];
 }
 
+function buildOwnerListInclude(filters = {}, personWhere = {}) {
+  const personInclude = { model: PersonInfo, as: 'person', where: { is_active: true, ...personWhere } };
+  const businessTypeInclude = buildBusinessTypeInclude(filters);
+  const businessInclude = {
+    model: BusinessInfo,
+    as: 'businesses',
+    through: { attributes: [] },
+    include: [businessTypeInclude],
+  };
+  if (filters.businessInfoId) {
+    businessInclude.where = { id: filters.businessInfoId };
+    businessInclude.required = true;
+  }
+  return [personInclude, businessInclude];
+}
+
+function extractOwnerFilters(query = {}) {
+  return {
+    businessInfoId: parsePositiveInt(query.business_info_id),
+    businessTypeId: parsePositiveInt(query.business_type_id),
+  };
+}
+
 const DEFAULT_PAGINATION_LIMIT = 20;
 const MAX_PAGINATION_LIMIT = 100;
 
@@ -193,11 +216,18 @@ exports.getAllOwners = async (req, res) => {
   try {
     //Get All Owners Only person.is_active = true
 
-    //TODO:Pagination,Search,Filter ,Added for getAllOwners
-    const owners = await BusinessOwner.findAll({
-      include: ownerInclude,
+    //Pagination,Search,Filter ,Added for getAllOwners
+    const { limit, offset, page } = getPaginationOptions(req.query);
+    const filters = extractOwnerFilters(req.query);
+    const searchTerm = getSearchTerm(req.query);
+    const personWhere = buildPersonSearchWhere({ searchTerm, onlyActive: true });
+    const result = await BusinessOwner.findAndCountAll({
+      include: buildOwnerListInclude(filters, personWhere),
+      limit,
+      offset,
+      distinct: true,
     });
-    return success(res, owners);
+    return paginatedSuccess(res, result, { page, limit });
   } catch (err) {
     console.error(err);
     return error(res, 'Server error', 500);

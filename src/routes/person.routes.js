@@ -33,6 +33,14 @@ router.delete(
   ctrl.removeOwner,
 );
 
+// List Owners — Admin and above
+router.get(
+  '/owners',
+  authenticate,
+  authorize('SuperAdmin', 'Admin'),
+  ctrl.listOwners,
+);
+
 // Create Employee — all roles (Operator included)
 router.post(
   '/employee',

@@ -78,6 +78,50 @@ function parsePositiveInt(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+const DEFAULT_PAGINATION_LIMIT = 20;
+const MAX_PAGINATION_LIMIT = 100;
+
+function parseBoolean(value) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1'].includes(normalized)) return true;
+    if (['false', '0'].includes(normalized)) return false;
+  }
+  return null;
+}
+
+function getPaginationOptions(query = {}) {
+  let limit = Number.parseInt(query.limit, 10);
+  if (!Number.isFinite(limit) || limit <= 0) {
+    limit = DEFAULT_PAGINATION_LIMIT;
+  }
+  limit = Math.min(limit, MAX_PAGINATION_LIMIT);
+
+  let page = Number.parseInt(query.page, 10);
+  if (!Number.isFinite(page) || page <= 0) {
+    page = 1;
+  }
+
+  const offset = (page - 1) * limit;
+  return { limit, offset, page };
+}
+
+function paginatedSuccess(res, result, { page, limit }) {
+  const total = result.count || 0;
+  const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
+
+  return success(res, {
+    data: result.rows,
+    meta: {
+      total,
+      limit,
+      page,
+      totalPages,
+    },
+  });
+}
+
 // ── Create Owner ──────────────────────────────────────────────
 exports.createOwner = async (req, res) => {
   try {
@@ -131,6 +175,23 @@ exports.getOwnerById = async (req, res) => {
     });
     if (!owner) return error(res, 'Owner not found', 404);
     return success(res, owner);
+  } catch (err) {
+    console.error(err);
+    return error(res, 'Server error', 500);
+  }
+};
+
+exports.listOwners = async (req, res) => {
+  try {
+    const { limit, offset, page } = getPaginationOptions(req.query);
+
+    const result = await BusinessOwner.findAndCountAll({
+      include: ownerInclude,
+      limit,
+      offset,
+      distinct: true,
+    });
+    return paginatedSuccess(res, result, { page, limit });
   } catch (err) {
     console.error(err);
     return error(res, 'Server error', 500);
