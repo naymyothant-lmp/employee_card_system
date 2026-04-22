@@ -7,7 +7,7 @@ const { personUpload } = require('../middlewares/upload.middleware');
 router.post(
   '/owner',
   authenticate,
-  authorize('SuperAdmin', 'Admin'),
+  authorize('SuperAdmin', 'Admin','Operator'),
   personUpload,
   ctrl.createOwner,
 );
@@ -16,20 +16,20 @@ router.post(
 router.get(
   '/owner/:id',
   authenticate,
-  authorize('SuperAdmin', 'Admin'),
+  authorize('SuperAdmin', 'Admin','Operator'),
   ctrl.getOwnerById,
 );
 router.patch(
   '/owner/:id',
   authenticate,
-  authorize('SuperAdmin', 'Admin'),
+  authorize('SuperAdmin', 'Admin','Operator'),
   personUpload,
   ctrl.updateOwner,
 );
 router.delete(
   '/owner/:id',
   authenticate,
-  authorize('SuperAdmin', 'Admin'),
+  authorize('SuperAdmin', 'Admin','Operator'),
   ctrl.removeOwner,
 );
 
@@ -37,7 +37,7 @@ router.delete(
 router.get(
   '/owners',
   authenticate,
-  authorize('SuperAdmin', 'Admin'),
+  authorize('SuperAdmin', 'Admin','Operator'),
   ctrl.listOwners,
 );
 
@@ -54,7 +54,7 @@ router.post(
 router.get(
   '/employee/:id',
   authenticate,
-  authorize('SuperAdmin', 'Admin'),
+  authorize('SuperAdmin', 'Admin','Operator'),
   ctrl.getEmployeeById,
 );
 
@@ -62,7 +62,7 @@ router.get(
 router.patch(
   '/:id',
   authenticate,
-  authorize('SuperAdmin', 'Admin'),
+  authorize('SuperAdmin', 'Admin','Operator'),
   personUpload,
   ctrl.updatePerson,
 );
@@ -71,7 +71,7 @@ router.patch(
 router.delete(
   '/:id',
   authenticate,
-  authorize('SuperAdmin', 'Admin'),
+  authorize('SuperAdmin', 'Admin','Operator'),
   ctrl.removePerson,
 );
 

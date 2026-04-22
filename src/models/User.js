@@ -1,7 +1,7 @@
 const { DataTypes } = require('sequelize');
 const bcrypt = require('bcryptjs');
 
-const USER_TYPES = ['SuperAdmin', 'Admin', 'Operator'];
+const USER_TYPES = ['SuperAdmin', 'Admin','Verifier', 'Operator'];
 
 module.exports = (sequelize) => {
   const User = sequelize.define('User', {

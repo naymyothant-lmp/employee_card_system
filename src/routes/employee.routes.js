@@ -37,11 +37,11 @@ router.delete(
 // Toggle active status — Admin and above
 router.patch('/:id/toggle-active', authenticate, authorize('SuperAdmin', 'Admin'), ctrl.toggleActive);
 
-router.post('/verify',authenticate, ctrl.verifyByCode);
-router.post('/addToIssue',authenticate, ctrl.addIssueCard);
-router.put('/updateIssueStatus/:card_issue_id',authenticate, ctrl.updateIssueCard);
+router.post('/verify',authenticate,authorize('SuperAdmin', 'Admin','Operator','Verifier'), ctrl.verifyByCode);
+router.post('/addToIssue',authenticate,authorize('SuperAdmin', 'Admin','Operator'), ctrl.addIssueCard);
+router.put('/updateIssueStatus/:card_issue_id',authenticate,authorize('SuperAdmin', 'Admin','Operator'), ctrl.updateIssueCard);
 
-router.get('/cardToIssue', authenticate, ctrl.getCardsToIssue);
-router.get('/issuedCards', authenticate, ctrl.getEmployeesWithIssuedCards);
+router.get('/cardToIssue', authenticate,authorize('SuperAdmin', 'Admin','Operator'), ctrl.getCardsToIssue);
+router.get('/issuedCards', authenticate,authorize('SuperAdmin', 'Admin','Operator'), ctrl.getEmployeesWithIssuedCards);
 
 module.exports = router;
