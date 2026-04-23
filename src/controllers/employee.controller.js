@@ -84,7 +84,7 @@ function buildBusinessInclude(filters) {
   if (needsBusinessFilter) {
     include.required = true;
   }
-  return include;
+  // return include;
 }
 
 function buildEmployeeBusinessInclude(filters = {}) {
@@ -103,16 +103,19 @@ function buildEmployeeBusinessInclude(filters = {}) {
   return include;
 }
 
-function buildOwnerInclude(filters,{ownerFilters = {}} = {}) {
+function buildOwnerInclude(filters,{includeBusiness = true} ) {
+  let includes =  [
+      { model: PersonInfo, as: 'person' },
+    ];
+    if(includeBusiness){
+      includes.push(buildBusinessInclude(filters));
+    }
 
   const ownerInclude = {
     // where: { ...ownerFilters },
     model: BusinessOwner,
     as: 'owner',
-    include: [
-      { model: PersonInfo, as: 'person' },
-      // buildBusinessInclude({businessInfoId: filters.businessInfoId,  }),
-    ],
+    include: includes
   };
     // const ownerInclude = {
     //       model: BusinessOwner,
@@ -134,12 +137,12 @@ function buildOwnerInclude(filters,{ownerFilters = {}} = {}) {
   return ownerInclude;
 }
 
-function buildFullInclude(filters = {}, personOptions = {}) {
+function buildFullInclude(filters = {}, personOptions = {},{includeOwnerBusiness = true} ) {
   const personInclude = { model: PersonInfo, as: 'person' };
   if (personOptions.where) {
     personInclude.where = personOptions.where;
   }
-  return [personInclude, buildEmployeeBusinessInclude(filters), buildOwnerInclude(filters)];
+  return [personInclude, buildEmployeeBusinessInclude(filters), buildOwnerInclude(filters, { includeBusiness: includeOwnerBusiness })];
 }
 
 function buildOwnerListInclude(filters = {}, personWhere = {}) {
@@ -530,7 +533,7 @@ exports.getCardsToIssue = async (req, res) => {
         model: EmployeeInfo,
         as: 'employee',
         required: true,
-        include: buildFullInclude(filters, personWhere ? { where: personWhere } : undefined,),
+        include: buildFullInclude(filters, personWhere ? { where: personWhere } : undefined,{includeOwnerBusiness: false}),
       },
       limit,
       offset,
