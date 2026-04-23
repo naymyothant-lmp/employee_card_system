@@ -103,15 +103,28 @@ function buildEmployeeBusinessInclude(filters = {}) {
   return include;
 }
 
-function buildOwnerInclude(filters) {
+function buildOwnerInclude(filters,{ownerFilters = {}} = {}) {
+
   const ownerInclude = {
+    // where: { ...ownerFilters },
     model: BusinessOwner,
-    as: 'owners',
+    as: 'owner',
     include: [
       { model: PersonInfo, as: 'person' },
-      buildBusinessInclude(filters),
+      // buildBusinessInclude({businessInfoId: filters.businessInfoId,  }),
     ],
   };
+    // const ownerInclude = {
+    //       model: BusinessOwner,
+    //       as: 'owners',
+    //       attributes: ['id'],
+    //       through: { attributes: [] },
+    //       include: [
+    //         { model: PersonInfo, as: 'person' },
+    //         buildBusinessInclude(filters),
+    //       ],
+    //       required: true,
+    //     }
   if (filters.businessOwnerId) {
     ownerInclude.where = { id: filters.businessOwnerId };
   }
@@ -507,7 +520,6 @@ exports.updateIssueCard = async (req, res) => {
 exports.getCardsToIssue = async (req, res) => {
   try {
     const { limit, offset, page } = getPaginationOptions(req.query);
-
     const filters = extractEmployeeFilters(req.query);
     const searchTerm = getSearchTerm(req.query);
     const personWhere = buildPersonSearchWhere({ searchTerm });
@@ -518,7 +530,7 @@ exports.getCardsToIssue = async (req, res) => {
         model: EmployeeInfo,
         as: 'employee',
         required: true,
-        include: buildFullInclude(filters, personWhere ? { where: personWhere } : undefined),
+        include: buildFullInclude(filters, personWhere ? { where: personWhere } : undefined,),
       },
       limit,
       offset,
