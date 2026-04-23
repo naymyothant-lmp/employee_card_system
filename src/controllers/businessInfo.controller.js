@@ -1,4 +1,4 @@
-const { BusinessInfo, BusinessType } = require('../models');
+const { BusinessInfo, BusinessType, BusinessOwner } = require('../models');
 const { Op } = require('sequelize');
 const { success, error } = require('../utils/response');
 
@@ -54,6 +54,7 @@ function buildBusinessWhere(query = {}) {
     andClauses.push({ business_type_id: businessTypeId });
   }
 
+
   if (nameFilter) {
     andClauses.push({ name: { [Op.like]: `%${nameFilter}%` } });
   }
@@ -105,6 +106,39 @@ exports.list = async (req, res) => {
       offset,
       distinct: true,
     });
+    return paginatedSuccess(res, result, { page, limit });
+  } catch (err) {
+    console.error(err);
+    return error(res, 'Server error', 500);
+  }
+};
+
+exports.getByOwner = async (req, res) => {
+  try {
+    const ownerId = parsePositiveInt(req.params.owner_id ?? req.query.owner_id);
+    if (!ownerId) return error(res, 'owner_id is required', 400);
+
+    const { limit, offset, page } = getPaginationOptions(req.query);
+    const where = buildBusinessWhere(req.query);
+
+    const result = await BusinessInfo.findAndCountAll({
+      where,
+      include: [
+        { model: BusinessType, as: 'businessType' },
+        {
+          model: BusinessOwner,
+          as: 'owners',
+          attributes: ['id'],
+          through: { attributes: [] },
+          where: { id: ownerId },
+          required: true,
+        },
+      ],
+      limit,
+      offset,
+      distinct: true,
+    });
+
     return paginatedSuccess(res, result, { page, limit });
   } catch (err) {
     console.error(err);

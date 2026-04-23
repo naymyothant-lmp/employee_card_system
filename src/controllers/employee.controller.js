@@ -106,7 +106,7 @@ function buildEmployeeBusinessInclude(filters = {}) {
 function buildOwnerInclude(filters) {
   const ownerInclude = {
     model: BusinessOwner,
-    as: 'owner',
+    as: 'owners',
     include: [
       { model: PersonInfo, as: 'person' },
       buildBusinessInclude(filters),
